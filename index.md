@@ -4,4 +4,5 @@
 
 layout: home
 title: Personal Faults
+icon: fa-home
 ---
