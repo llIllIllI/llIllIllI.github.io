@@ -1,7 +1,7 @@
 # SITE CONFIGURATION
 baseurl: ""
 url: "https://llillilli.github.io/"
-title: Personal
+title: Personal Records
 description: "A website with blog posts and pages"
 
 
@@ -15,21 +15,21 @@ theme_settings:
 
   # Header and footer text
   header_text: > #two or three lines to describe your site
-     <p>Change header text in <code>_config.yml</code> <br> to update this feature.</p>
+     <p>지극히 개인적인 기록들</p>
   header_text_feature_image: assets/img/pexels/triangular.jpeg
   footer_text: >
    Powered by <a href="https://jekyllrb.com/">Jekyll</a> with <a href="https://github.com/sylhare/Type-on-Strap">Type on Strap</a>
 
   # Icons
-  rss: true  # Make sure you created a feed.xml with feed.xml layout
-  email_address: # Full email address, e.g. "sam@example.com"
+  rss:
+  email_address: "ji89yeon@gmail.com" # Full email address, e.g. "sam@example.com"
   behance:
   bitbucket:
   dribbble:
   facebook:
   flickr:
   gitlab:
-  github: "sylhare"
+  github: "llillilli"
   google_plus:
   instagram:
   keybase:
@@ -69,7 +69,7 @@ theme_settings:
       enabled: true
     tags:
       icon: "tags"
-      enabled: true
+      enabled:
   
   # Localization strings
   str_follow_on: "Follow on"
