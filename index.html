@@ -14,12 +14,16 @@
         body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); padding: 20px; max-width: 1000px; margin: auto; color: #1e293b; line-height: 1.5; }
         .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid var(--border); }
         .flex-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-        .btn { padding: 12px 18px; border-radius: 8px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 600; font-size: 14px; transition: opacity 0.2s; }
+        .btn { padding: 12px 18px; border-radius: 8px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 600; font-size: 14px; transition: opacity 0.2s; white-space: nowrap; }
         .btn:active { opacity: 0.7; }
         .btn-copy { background: #475569; }
+        .btn-url { background: #7c3aed; } /* URL 불러오기 버튼 색상 */
         .btn-perm { background: #059669; }
         .btn-del { background: #dc2626; padding: 6px 12px; font-size: 12px; border-radius: 4px; color: white; border: none; cursor: pointer; }
         
+        /* URL 입력창 스타일 */
+        .url-input { flex: 1; min-width: 200px; padding: 11px; border-radius: 8px; border: 1px solid var(--border); font-size: 14px; }
+
         .list-wrapper { width: 100%; overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); background: white; }
         table { width: 100%; min-width: 750px; border-collapse: collapse; }
         th, td { padding: 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
@@ -31,24 +35,30 @@
         .remain-text { font-weight: 700; font-size: 14px; color: var(--primary); }
         .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #1e293b; color: white; padding: 12px 24px; border-radius: 30px; display: none; z-index: 10000; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         input[type="checkbox"] { width: 24px; height: 24px; cursor: pointer; }
-        input[type="time"] { padding: 6px; border-radius: 6px; border: 1px solid var(--border); }
     </style>
 </head>
 <body>
 
-    <h3 style="margin-top: 0;">🔔 스마트 알림 매니저 (PWA v2)</h3>
+    <h3 style="margin-top: 0;">🔔 스마트 알림 매니저 (PWA v3)</h3>
 
     <section class="card">
         <div class="flex-row">
-            <strong>🔇 방해 금지 시간:</strong> 
+            <strong>🔇 방해 금지:</strong> 
             <input type="time" id="dndStart" value="23:00"> ~ 
             <input type="time" id="dndEnd" value="07:00">
         </div>
         <div id="swStatus" style="font-size:12px; color: #64748b; font-weight: bold;">앱 설치 후 '제한 없음' 설정을 권장합니다.</div>
     </section>
 
+    <section class="card">
+        <div class="flex-row">
+            <input type="text" id="csvUrl" class="url-input" value="https://llillilli.github.io/initialData.csv" placeholder="CSV URL 입력">
+            <button class="btn btn-url" onclick="loadCsvFromUrl()">🔗 URL 불러오기</button>
+        </div>
+    </section>
+
     <div class="flex-row">
-        <button class="btn" onclick="document.getElementById('csvFile').click()">📁 CSV 불러오기</button>
+        <button class="btn" onclick="document.getElementById('csvFile').click()">📁 CSV 파일 선택</button>
         <input type="file" id="csvFile" hidden accept=".csv" onchange="handleCSV(this)">
         <button class="btn btn-copy" onclick="exportCSV()">📤 CSV 복사</button>
         <button class="btn btn-perm" onclick="initSW()">🔒 알림 및 SW 활성화</button>
@@ -78,7 +88,6 @@
         let alarms = [];
         const DEFAULT_ICON = 'https://cdn-icons-png.flaticon.com/512/311/311074.png';
 
-        // 1. 데이터 로드 및 초기화
         window.onload = function() {
             const saved = localStorage.getItem('alarm_pwa_data');
             if (saved) {
@@ -92,21 +101,55 @@
             localStorage.setItem('alarm_pwa_data', JSON.stringify(alarms));
         }
 
-        // 2. 서비스 워커 등록
         async function initSW() {
             if (!('serviceWorker' in navigator)) return;
             try {
                 const perm = await Notification.requestPermission();
                 if (perm !== 'granted') return alert("알림 권한이 필요합니다.");
-                
                 await navigator.serviceWorker.register('./sw.js');
-                document.getElementById('swStatus').innerText = "✅ 시스템 활성화 및 동기화 완료";
+                document.getElementById('swStatus').innerText = "✅ 시스템 활성화 완료";
                 document.getElementById('swStatus').style.color = "#059669";
                 alert("알림 시스템이 정상 등록되었습니다.");
             } catch (e) { alert("오류: " + e.message); }
         }
 
-        // 3. 시간 계산 로직
+        // URL로부터 CSV 불러오기 기능
+        async function loadCsvFromUrl() {
+            const url = document.getElementById('csvUrl').value;
+            if (!url) return alert("URL을 입력해주세요.");
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error("네트워크 응답이 정상이 아닙니다.");
+                const text = await response.text();
+                processCsvText(text);
+                alert("URL에서 데이터를 성공적으로 불러왔습니다.");
+            } catch (e) {
+                console.error(e);
+                alert("데이터를 가져오는데 실패했습니다. CORS 정책이나 URL을 확인하세요.");
+            }
+        }
+
+        function processCsvText(text) {
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            lines.forEach(line => {
+                const p = line.split(',').map(item => item.trim());
+                if(p.length >= 4) {
+                    alarms.push({ 
+                        enabled: p[0]==='1', 
+                        name: p[1], 
+                        time: getNextTime(p[2], p[3]), 
+                        interval: p[3], 
+                        iconUrl: p[4] || 'null',
+                        originalZone: p[2].includes('+') ? p[2].split('+')[1] : '09:00', 
+                        notifiedBefore: false 
+                    });
+                }
+            });
+            save();
+            renderUI();
+        }
+
         function getNextTime(start, interval) {
             let target = new Date(start);
             const now = new Date();
@@ -115,7 +158,6 @@
             return target;
         }
 
-        // 4. 메인 루프 (1초마다 실행)
         setInterval(() => {
             const now = new Date();
             const ds = document.getElementById('dndStart').value, de = document.getElementById('dndEnd').value;
@@ -127,39 +169,31 @@
                 const alarmTime = new Date(a.time);
                 const notiTime = new Date(alarmTime.getTime() - (5 * 60 * 1000));
 
-                // 5분 전 알림 체크
                 if (now >= notiTime && !a.notifiedBefore) {
                     if (a.enabled && !isDND) {
                         const min = Math.ceil((alarmTime - now) / 60000);
                         const icon = (a.iconUrl && a.iconUrl !== 'null') ? a.iconUrl : DEFAULT_ICON;
-                        
                         if (navigator.serviceWorker.controller) {
                             navigator.serviceWorker.controller.postMessage({ 
                                 type: 'SHOW_NOTIFICATION', 
                                 title: `${a.name} (${min}분 전)`, 
-                                body: '잠시 후 설정된 알림 시간입니다.',
+                                body: '잠시 후 알림 시간입니다.',
                                 icon: icon
                             });
-                        } else {
-                            new Notification(`${a.name} (${min}분 전)`, { icon: icon });
                         }
                     }
                     a.notifiedBefore = true;
                 }
-
-                // 기준 시간 도달 시 자동 갱신
                 if (now >= alarmTime) {
                     a.time = getNextTime(a.time, a.interval);
                     a.notifiedBefore = false;
                     changed = true;
                 }
             });
-
             if (changed) save();
             renderUI();
         }, 1000);
 
-        // 5. UI 렌더링
         function renderUI() {
             const tbody = document.getElementById('alarmListBody');
             const now = new Date();
@@ -168,18 +202,13 @@
             tbody.innerHTML = alarms.map((a, i) => {
                 const diff = a.time - now;
                 const h = Math.floor(diff/3600000), m = Math.floor((diff%3600000)/60000);
-                
-                // 색상 클래스 (10분 미만 빨강, 1시간 미만 노랑)
-                let rowCls = "";
-                if (diff > 0 && diff < 600000) rowCls = "status-red";
-                else if (diff > 0 && diff < 3600000) rowCls = "status-yellow";
-                
+                let rowCls = (diff > 0 && diff < 600000) ? "status-red" : (diff < 3600000 ? "status-yellow" : "");
                 const iconPath = (a.iconUrl && a.iconUrl !== 'null') ? a.iconUrl : DEFAULT_ICON;
                 
                 return `<tr class="${rowCls}">
                     <td><input type="checkbox" ${a.enabled ? 'checked' : ''} onchange="alarms[${i}].enabled=this.checked; save();"></td>
                     <td><img src="${iconPath}" class="alarm-icon" onerror="this.src='${DEFAULT_ICON}'"></td>
-                    <td style="font-weight: 500;">${a.name}</td>
+                    <td>${a.name}</td>
                     <td style="font-weight:bold;">${a.time.getHours().toString().padStart(2,'0')}:${a.time.getMinutes().toString().padStart(2,'0')}</td>
                     <td class="remain-text">${diff > 0 ? h+'시간 '+m+'분' : '계산 중...'}</td>
                     <td><button class="btn-del" onclick="alarms.splice(${i},1); save();">-</button></td>
@@ -187,29 +216,12 @@
             }).join('');
         }
 
-        // 6. CSV 핸들러
         function handleCSV(input) {
             const file = input.files[0];
             if(!file) return;
             const reader = new FileReader();
             reader.onload = function(e) {
-                const lines = e.target.result.split(/\r?\n/).filter(l => l.trim());
-                lines.forEach(line => {
-                    const p = line.split(',').map(item => item.trim());
-                    if(p.length >= 4) {
-                        alarms.push({ 
-                            enabled: p[0]==='1', 
-                            name: p[1], 
-                            time: getNextTime(p[2], p[3]), 
-                            interval: p[3], 
-                            iconUrl: p[4] || 'null',
-                            originalZone: p[2].includes('+') ? p[2].split('+')[1] : '09:00', 
-                            notifiedBefore: false 
-                        });
-                    }
-                });
-                save();
-                renderUI();
+                processCsvText(e.target.result);
             };
             reader.readAsText(file, "UTF-8");
             input.value = '';
