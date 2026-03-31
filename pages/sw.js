@@ -1,40 +1,21 @@
 // sw.js
-let alarmList = [];
-let checkTimer = null;
-
 self.addEventListener('install', (e) => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
-// 페이지로부터 알림 리스트를 전달받음
+// 페이지(index.html)에서 보낸 알림 명령 수신
 self.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'SYNC_ALARMS') {
-            alarmList = event.data.alarms;
-                    console.log('SW: 알림 리스트 동기화 완료', alarmList);
-                            startAlarmTimer();
-                                }
-                                });
-
-                                function startAlarmTimer() {
-                                    if (checkTimer) clearInterval(checkTimer);
-                                        
-                                            // 1초마다 백그라운드에서 체크
-                                                checkTimer = setInterval(() => {
-                                                        const now = new Date();
-                                                                const curStr = now.getHours().toString().padStart(2,'0') + ":" + now.getMinutes().toString().padStart(2,'0');
-                                                                        
-                                                                                let changed = false;
-
-                                                                                        alarmList.forEach(a => {
-                                                                                                    const alarmTime = new Date(a.time);
-                                                                                                                const notificationTime = new Date(alarmTime.getTime() - (5 * 60 * 1000));
-
-                                                                                                                            // 1. 5분 전 알림 (notifiedBefore 플래그 활용)
-                                                                                                                                        if (now >= notificationTime && !a.notifiedBefore) {
-                                                                                                                                                        if (a.enabled) {
-                                                                                                                                                                            const remainMin = Math.ceil((alarmTime - now) / 60000);
-                                                                                                                                                                                                showNoti(`${a.name} (${remainMin}분 전)`, `곧 기준 시간입니다.`);
-                                                                                                                                                                                                                }
-                                                                                                                                                                                                                                a.notifiedBefore = true;
+    if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+        const { title, body } = event.data;
+        self.registration.showNotification(title, {
+            body: body,
+            icon: 'https://cdn-icons-png.flaticon.com/512/311/311074.png',
+            vibrate: [200, 100, 200],
+            badge: 'https://cdn-icons-png.flaticon.com/512/311/311074.png',
+            tag: 'smart-alarm-sync',
+            renotify: true
+        });
+    }
+});                                                                                                                                                                                                                                a.notifiedBefore = true;
                                                                                                                                                                                                                                                 changed = true;
                                                                                                                                                                                                                                                             }
 
