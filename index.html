@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>5분 전 알림 매니저</title>
+    <title>스마트 알림 매니저</title>
     
     <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#2563eb">
@@ -17,13 +17,11 @@
         .btn { padding: 12px 18px; border-radius: 8px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 600; font-size: 14px; transition: opacity 0.2s; white-space: nowrap; }
         .btn:active { opacity: 0.7; }
         .btn-copy { background: #475569; }
-        .btn-url { background: #7c3aed; } /* URL 불러오기 버튼 색상 */
+        .btn-url { background: #7c3aed; }
         .btn-perm { background: #059669; }
         .btn-del { background: #dc2626; padding: 6px 12px; font-size: 12px; border-radius: 4px; color: white; border: none; cursor: pointer; }
         
-        /* URL 입력창 스타일 */
         .url-input { flex: 1; min-width: 200px; padding: 11px; border-radius: 8px; border: 1px solid var(--border); font-size: 14px; }
-
         .list-wrapper { width: 100%; overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); background: white; }
         table { width: 100%; min-width: 750px; border-collapse: collapse; }
         th, td { padding: 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
@@ -39,7 +37,7 @@
 </head>
 <body>
 
-    <h3 style="margin-top: 0;">🔔 스마트 알림 매니저 (PWA v3)</h3>
+    <h3 style="margin-top: 0;">🔔 스마트 알림 매니저</h3>
 
     <section class="card">
         <div class="flex-row">
@@ -53,12 +51,12 @@
     <section class="card">
         <div class="flex-row">
             <input type="text" id="csvUrl" class="url-input" value="https://llillilli.github.io/initialData.csv" placeholder="CSV URL 입력">
-            <button class="btn btn-url" onclick="loadCsvFromUrl()">🔗 URL 불러오기</button>
+            <button class="btn btn-url" onclick="loadCsvFromUrl()">🔗 URL 새로고침</button>
         </div>
     </section>
 
     <div class="flex-row">
-        <button class="btn" onclick="document.getElementById('csvFile').click()">📁 CSV 파일 선택</button>
+        <button class="btn" onclick="document.getElementById('csvFile').click()">📁 CSV 파일로 덮어쓰기</button>
         <input type="file" id="csvFile" hidden accept=".csv" onchange="handleCSV(this)">
         <button class="btn btn-copy" onclick="exportCSV()">📤 CSV 복사</button>
         <button class="btn btn-perm" onclick="initSW()">🔒 알림 및 SW 활성화</button>
@@ -82,7 +80,7 @@
         </div>
     </section>
 
-    <div id="toast" class="toast">CSV 데이터가 복사되었습니다!</div>
+    <div id="toast" class="toast">복사 완료!</div>
 
     <script>
         let alarms = [];
@@ -113,24 +111,25 @@
             } catch (e) { alert("오류: " + e.message); }
         }
 
-        // URL로부터 CSV 불러오기 기능
         async function loadCsvFromUrl() {
             const url = document.getElementById('csvUrl').value;
             if (!url) return alert("URL을 입력해주세요.");
-
             try {
                 const response = await fetch(url);
-                if (!response.ok) throw new Error("네트워크 응답이 정상이 아닙니다.");
+                if (!response.ok) throw new Error("네트워크 응답 오류");
                 const text = await response.text();
-                processCsvText(text);
-                alert("URL에서 데이터를 성공적으로 불러왔습니다.");
+                processCsvText(text); // 내부에서 alarms 리스트 초기화 후 진행
+                alert("기존 알림을 삭제하고 URL 데이터를 새로 불러왔습니다.");
             } catch (e) {
-                console.error(e);
-                alert("데이터를 가져오는데 실패했습니다. CORS 정책이나 URL을 확인하세요.");
+                alert("데이터 로드 실패: CORS 정책 혹은 URL을 확인하세요.");
             }
         }
 
+        // CSV 텍스트 처리 (덮어쓰기 로직)
         function processCsvText(text) {
+            // 1. 기존 리스트 비우기 (덮어쓰기 핵심)
+            alarms = []; 
+            
             const lines = text.split(/\r?\n/).filter(l => l.trim());
             lines.forEach(line => {
                 const p = line.split(',').map(item => item.trim());
@@ -146,8 +145,8 @@
                     });
                 }
             });
-            save();
-            renderUI();
+            save(); // localStorage 갱신
+            renderUI(); // 화면 갱신
         }
 
         function getNextTime(start, interval) {
@@ -158,6 +157,7 @@
             return target;
         }
 
+        // 알림 엔진 루프
         setInterval(() => {
             const now = new Date();
             const ds = document.getElementById('dndStart').value, de = document.getElementById('dndEnd').value;
@@ -222,6 +222,7 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 processCsvText(e.target.result);
+                alert("파일 데이터로 알림 목록이 교체되었습니다.");
             };
             reader.readAsText(file, "UTF-8");
             input.value = '';
