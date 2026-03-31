@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트 알림 매니저</title>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; --border: #e2e8f0; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); padding: 20px; max-width: 900px; margin: auto; color: #1e293b; }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid var(--border); }
+        .flex-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+        .btn { padding: 12px 18px; border-radius: 8px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 600; font-size: 14px; }
+        .btn-copy { background: #475569; }
+        .btn-perm { background: #059669; }
+        .btn-del { background: #dc2626; padding: 6px 12px; font-size: 12px; border-radius: 4px; color: white; border: none; cursor: pointer; }
+        .list-wrapper { width: 100%; overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+        table { width: 100%; min-width: 600px; border-collapse: collapse; }
+        th, td { padding: 12px; border-bottom: 1px solid var(--border); text-align: left; }
+        thead th { background: #f1f5f9; font-size: 13px; color: #64748b; }
+        
+        /* 색상 강조 */
+        .status-red { background-color: #fee2e2 !important; color: #991b1b; }
+        .status-yellow { background-color: #fef9c3 !important; color: #854d0e; }
+        
+        .remain-text { font-weight: 700; font-size: 14px; }
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #1e293b; color: white; padding: 10px 20px; border-radius: 30px; display: none; z-index: 10000; }
+        input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <h3>🔔 스마트 알림 매니저</h3>
+
+    <section class="card">
+        <div class="flex-row">
+            <strong>🔇 방해 금지 설정:</strong> 
+            <input type="time" id="dndStart" value="23:00"> ~ 
+            <input type="time" id="dndEnd" value="07:00">
+        </div>
+        <div id="swStatus" style="font-size:12px; color: #ef4444; font-weight: bold;">⚠️ 알림 권한 및 SW 활성화가 필요합니다.</div>
+    </section>
+
+    <div class="flex-row">
+        <button class="btn" onclick="document.getElementById('csvFile').click()">📁 CSV 불러오기</button>
+        <input type="file" id="csvFile" hidden accept=".csv" onchange="handleCSV(this)">
+        <button class="btn btn-copy" onclick="exportCSV()">📤 CSV 복사</button>
+        <button class="btn btn-perm" onclick="initServiceWorker()">🔒 알림 및 SW 활성화</button>
+    </div>
+
+    <section class="card">
+        <div class="list-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">알림</th>
+                        <th>이름</th>
+                        <th style="width: 100px;">기준 시간</th>
+                        <th style="width: 160px;">남은 시간</th>
+                        <th style="width: 60px;">삭제</th>
+                    </tr>
+                </thead>
+                <tbody id="alarmListBody"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <div id="toast" class="toast">CSV 데이터가 복사되었습니다!</div>
+
+    <script>
+        let alarms = [];
+        let swRegistration = null;
+
+        // GitHub Pages 도메인 내의 서비스 워커 등록
+        async function initServiceWorker() {
+            // 동일 도메인이므로 절대 경로로 지정
+            const SW_URL = '/assets/js/sw.js';
+            
+            if (!('serviceWorker' in navigator)) {
+                alert("이 브라우저는 서비스 워커를 지원하지 않습니다.");
+                return;
+            }
+
+            try {
+                const permission = await Notification.requestPermission();
+                if (permission !== 'granted') {
+                    alert("알림 권한이 필요합니다.");
+                    return;
+                }
+
+                // 서비스 워커 등록 (scope를 루트로 지정)
+                swRegistration = await navigator.serviceWorker.register(SW_URL, { scope: '/' });
+                
+                document.getElementById('swStatus').innerText = "✅ 서비스 워커 활성화됨 (백그라운드 지원)";
+                document.getElementById('swStatus').style.color = "#059669";
+                alert("성공적으로 등록되었습니다!");
+            } catch (e) {
+                console.error(e);
+                alert("등록 실패: " + e.message);
+            }
+        }
+
+        function getNextValidTime(startTime, intervalSeconds) {
+            let target = new Date(startTime);
+            const now = new Date();
+            const intervalMs = (parseInt(intervalSeconds) || 300) * 1000;
+            while (target <= now) {
+                target = new Date(target.getTime() + intervalMs);
+            }
+            return target;
+        }
+
+        setInterval(() => {
+            const now = new Date();
+            processAlarms(now);
+            renderUI(now);
+        }, 1000);
+
+        function processAlarms(now) {
+            const curStr = now.getHours().toString().padStart(2,'0') + ":" + now.getMinutes().toString().padStart(2,'0');
+            const ds = document.getElementById('dndStart').value, de = document.getElementById('dndEnd').value;
+            const isDND = ds < de ? (curStr >= ds && curStr <= de) : (curStr >= ds || curStr <= de);
+
+            alarms.forEach(a => {
+                const alarmTime = new Date(a.time);
+                const notificationTime = new Date(alarmTime.getTime() - (5 * 60 * 1000));
+
+                if (now >= notificationTime && !a.notifiedBefore) {
+                    if (a.enabled && !isDND) {
+                        const diffMs = alarmTime - now;
+                        const remainMin = Math.ceil(diffMs / 60000); 
+
+                        const title = `${a.name} (남은 시간 : ${remainMin}분)`;
+                        const body = `기준 시간 5분 전 예고 알림입니다.`;
+
+                        if (navigator.serviceWorker.controller) {
+                            navigator.serviceWorker.controller.postMessage({
+                                type: 'SHOW_NOTIFICATION', title, body
+                            });
+                        } else {
+                            new Notification(title, { body });
+                        }
+                    }
+                    a.notifiedBefore = true;
+                }
+
+                if (now >= alarmTime) {
+                    a.time = getNextValidTime(a.time, a.interval);
+                    a.notifiedBefore = false;
+                }
+            });
+        }
+
+        function renderUI(now) {
+            const tbody = document.getElementById('alarmListBody');
+            alarms.sort((a,b) => a.time - b.time);
+            
+            tbody.innerHTML = alarms.map((a, i) => {
+                const diffMs = a.time - now;
+                const hours = Math.floor(diffMs / 3600000);
+                const mins = Math.floor((diffMs % 3600000) / 60000);
+                
+                let rowClass = "";
+                if (diffMs > 0 && diffMs < 10 * 60 * 1000) rowClass = "status-red";
+                else if (diffMs > 0 && diffMs < 60 * 60 * 1000) rowClass = "status-yellow";
+
+                const remainStr = diffMs > 0 ? `${hours}시간 ${mins}분` : "갱신 중...";
+                const timeStr = `${a.time.getHours().toString().padStart(2,'0')}:${a.time.getMinutes().toString().padStart(2,'0')}`;
+                
+                return `
+                <tr class="${rowClass}">
+                    <td><input type="checkbox" ${a.enabled ? 'checked' : ''} onchange="alarms[${i}].enabled = this.checked"></td>
+                    <td>${a.name}</td>
+                    <td style="font-weight:bold;">${timeStr}</td>
+                    <td class="remain-text">${remainStr}</td>
+                    <td><button class="btn-del" onclick="alarms.splice(${i},1)">-</button></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function handleCSV(input) {
+            const file = input.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const lines = e.target.result.split(/\r?\n/).filter(l => l.trim());
+                lines.forEach(line => {
+                    const p = line.split(',').map(item => item.trim());
+                    if(p.length >= 4) {
+                        const interval = parseInt(p[3]);
+                        alarms.push({ 
+                            enabled: p[0]==='1', name: p[1], 
+                            time: getNextValidTime(p[2], interval), 
+                            interval: interval,
+                            originalZone: p[2].includes('+') ? p[2].split('+')[1] : '09:00',
+                            notifiedBefore: false
+                        });
+                    }
+                });
+                renderUI(new Date());
+            };
+            reader.readAsText(file, "UTF-8");
+            input.value = '';
+        }
+
+        function exportCSV() {
+            const pad = (n) => n.toString().padStart(2, '0');
+            const csv = alarms.map(a => {
+                const d = a.time;
+                const timeStr = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}+${a.originalZone}`;
+                return `${a.enabled?1:0},${a.name},${timeStr},${a.interval}`;
+            }).join('\n');
+            navigator.clipboard.writeText(csv).then(() => {
+                const t = document.getElementById('toast'); t.style.display='block';
+                setTimeout(() => t.style.display='none', 2500);
+            });
+        }
+    </script>
+</body>
+</html>
