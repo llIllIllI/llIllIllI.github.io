@@ -72,8 +72,7 @@
 
         // GitHub Pages 도메인 내의 서비스 워커 등록
         async function initServiceWorker() {
-            // 동일 도메인이므로 절대 경로로 지정
-            const SW_URL = '/sw.js';
+            const SW_URL = './sw.js';
             
             if (!('serviceWorker' in navigator)) {
                 alert("이 브라우저는 서비스 워커를 지원하지 않습니다.");
@@ -88,7 +87,7 @@
                 }
 
                 // 서비스 워커 등록 (scope를 루트로 지정)
-                swRegistration = await navigator.serviceWorker.register(SW_URL, { scope: '/' });
+                swRegistration = await navigator.serviceWorker.register(SW_URL, { scope: './' });
                 
                 document.getElementById('swStatus').innerText = "✅ 서비스 워커 활성화됨 (백그라운드 지원)";
                 document.getElementById('swStatus').style.color = "#059669";
