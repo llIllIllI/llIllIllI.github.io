@@ -4,11 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>스마트 알림 매니저</title>
-    
     <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#2563eb">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/311/311074.png">
-
     <style>
         :root { --primary: #2563eb; --bg: #f8fafc; --border: #e2e8f0; }
         body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); padding: 20px; max-width: 1100px; margin: auto; color: #1e293b; line-height: 1.5; }
@@ -20,11 +18,14 @@
         .btn-url { background: #7c3aed; }
         .btn-perm { background: #059669; }
         .btn-del { background: #dc2626; padding: 6px 12px; font-size: 12px; border-radius: 4px; color: white; border: none; cursor: pointer; }
-        
         .url-input { flex: 1; min-width: 200px; padding: 11px; border-radius: 8px; border: 1px solid var(--border); font-size: 14px; }
+        
+        /* 리스트 스타일 */
         .list-wrapper { width: 100%; overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); background: white; }
         table { width: 100%; min-width: 900px; border-collapse: collapse; }
         th, td { padding: 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+        tbody tr { cursor: pointer; transition: background 0.1s; }
+        tbody tr:hover { background-color: #f1f5f9; }
         thead th { background: #f1f5f9; font-size: 13px; color: #64748b; font-weight: 600; }
         
         .alarm-icon { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; border: 1px solid #e2e8f0; background: #fff; }
@@ -32,8 +33,17 @@
         .status-yellow { background-color: #fef9c3 !important; color: #854d0e; }
         .remain-text { font-weight: 700; font-size: 14px; color: var(--primary); }
         .interval-text { font-size: 13px; color: #64748b; }
+
+        /* 모달 스타일 */
+        .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center; z-index:1000; }
+        .modal { background: white; padding: 25px; border-radius: 16px; width: 90%; max-width: 450px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .modal h4 { margin-top: 0; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 12px; color: #64748b; margin-bottom: 5px; }
+        .form-group input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); box-sizing: border-box; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+        
         .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #1e293b; color: white; padding: 12px 24px; border-radius: 30px; display: none; z-index: 10000; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-        input[type="checkbox"] { width: 24px; height: 24px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -57,10 +67,10 @@
     </section>
 
     <div class="flex-row">
-        <button class="btn" onclick="document.getElementById('csvFile').click()">📁 CSV 파일로 덮어쓰기</button>
+        <button class="btn" onclick="document.getElementById('csvFile').click()">📁 CSV 덮어쓰기</button>
         <input type="file" id="csvFile" hidden accept=".csv" onchange="handleCSV(this)">
         <button class="btn btn-copy" onclick="exportCSV()">📤 CSV 복사</button>
-        <button class="btn btn-perm" onclick="initSW()">🔒 알림 및 SW 활성화</button>
+        <button class="btn btn-perm" onclick="initSW()">🔒 알림 활성화</button>
     </div>
 
     <section class="card">
@@ -73,7 +83,7 @@
                         <th>알림 이름</th>
                         <th style="width: 140px;">기준 시간 (날짜)</th>
                         <th style="width: 150px;">남은 시간</th>
-                        <th style="width: 120px;">간격</th>
+                        <th style="width: 120px;">간격(초)</th>
                         <th style="width: 60px;">삭제</th>
                     </tr>
                 </thead>
@@ -81,6 +91,33 @@
             </table>
         </div>
     </section>
+
+    <div id="editModal" class="modal-overlay">
+        <div class="modal">
+            <h4>알림 정보 수정</h4>
+            <input type="hidden" id="editIndex">
+            <div class="form-group">
+                <label>알림 이름</label>
+                <input type="text" id="editName">
+            </div>
+            <div class="form-group">
+                <label>아이콘 URL (이미지 주소)</label>
+                <input type="text" id="editIcon">
+            </div>
+            <div class="form-group">
+                <label>기준 시간 (YYYY-MM-DDTHH:MM)</label>
+                <input type="datetime-local" id="editTime">
+            </div>
+            <div class="form-group">
+                <label>반복 간격 (초 단위)</label>
+                <input type="number" id="editInterval">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-copy" onclick="closeModal()">취소</button>
+                <button class="btn" onclick="saveEdit()">저장하기</button>
+            </div>
+        </div>
+    </div>
 
     <div id="toast" class="toast">복사 완료!</div>
 
@@ -113,18 +150,42 @@
             } catch (e) { alert("오류: " + e.message); }
         }
 
-        async function loadCsvFromUrl() {
-            const url = document.getElementById('csvUrl').value;
-            if (!url) return alert("URL을 입력해주세요.");
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error("네트워크 응답 오류");
-                const text = await response.text();
-                processCsvText(text);
-                alert("기존 알림을 삭제하고 URL 데이터를 새로 불러왔습니다.");
-            } catch (e) {
-                alert("데이터 로드 실패: CORS 정책 혹은 URL을 확인하세요.");
-            }
+        // 모달 열기
+        function openEditModal(index, e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+            const a = alarms[index];
+            document.getElementById('editIndex').value = index;
+            document.getElementById('editName').value = a.name;
+            document.getElementById('editIcon').value = (a.iconUrl === 'null' ? '' : a.iconUrl);
+            
+            // datetime-local 입력을 위해 시간 포맷팅
+            const offset = a.time.getTimezoneOffset() * 60000;
+            const localISOTime = new Date(a.time.getTime() - offset).toISOString().slice(0, 16);
+            document.getElementById('editTime').value = localISOTime;
+            
+            document.getElementById('editInterval').value = a.interval;
+            document.getElementById('editModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('editModal').style.display = 'none';
+        }
+
+        function saveEdit() {
+            const idx = document.getElementById('editIndex').value;
+            const newTime = new Date(document.getElementById('editTime').value);
+            
+            alarms[idx].name = document.getElementById('editName').value;
+            alarms[idx].iconUrl = document.getElementById('editIcon').value || 'null';
+            alarms[idx].interval = document.getElementById('editInterval').value;
+            
+            // 시간이 변경되면 다시 가장 가까운 미래 시간으로 보정
+            alarms[idx].time = getNextTime(newTime, alarms[idx].interval);
+            alarms[idx].notifiedBefore = false; // 알림 상태 초기화
+
+            save();
+            closeModal();
+            renderUI();
         }
 
         function processCsvText(text) {
@@ -134,11 +195,9 @@
                 const p = line.split(',').map(item => item.trim());
                 if(p.length >= 4) {
                     alarms.push({ 
-                        enabled: p[0]==='1', 
-                        name: p[1], 
+                        enabled: p[0]==='1', name: p[1], 
                         time: getNextTime(p[2], p[3]), 
-                        interval: p[3], 
-                        iconUrl: p[4] || 'null',
+                        interval: p[3], iconUrl: p[4] || 'null',
                         originalZone: p[2].includes('+') ? p[2].split('+')[1] : '09:00', 
                         notifiedBefore: false 
                     });
@@ -162,9 +221,9 @@
             const m = Math.floor((s % 3600) / 60);
             const r = s % 60;
             let res = [];
-            if (h > 0) res.push(`${h}시간`);
-            if (m > 0) res.push(`${m}분`);
-            if (r > 0 || res.length === 0) res.push(`${r}초`);
+            if (h > 0) res.push(`${h}h`);
+            if (m > 0) res.push(`${m}m`);
+            if (r > 0 || res.length === 0) res.push(`${r}s`);
             return res.join(' ');
         }
 
@@ -178,17 +237,14 @@
             alarms.forEach(a => {
                 const alarmTime = new Date(a.time);
                 const notiTime = new Date(alarmTime.getTime() - (5 * 60 * 1000));
-
                 if (now >= notiTime && !a.notifiedBefore) {
                     if (a.enabled && !isDND) {
                         const min = Math.ceil((alarmTime - now) / 60000);
                         const icon = (a.iconUrl && a.iconUrl !== 'null') ? a.iconUrl : DEFAULT_ICON;
                         if (navigator.serviceWorker.controller) {
                             navigator.serviceWorker.controller.postMessage({ 
-                                type: 'SHOW_NOTIFICATION', 
-                                title: `${a.name} (${min}분 전)`, 
-                                body: '잠시 후 알림 시간입니다.',
-                                icon: icon
+                                type: 'SHOW_NOTIFICATION', title: `${a.name} (${min}분 전)`, 
+                                body: '잠시 후 알림 시간입니다.', icon: icon
                             });
                         }
                     }
@@ -214,31 +270,37 @@
                 const h = Math.floor(diff/3600000), m = Math.floor((diff%3600000)/60000);
                 let rowCls = (diff > 0 && diff < 600000) ? "status-red" : (diff < 3600000 ? "status-yellow" : "");
                 const iconPath = (a.iconUrl && a.iconUrl !== 'null') ? a.iconUrl : DEFAULT_ICON;
-                
-                // 날짜 및 시간 포맷팅
                 const dateStr = (a.time.getMonth() + 1) + '/' + a.time.getDate();
                 const timeStr = a.time.getHours().toString().padStart(2,'0') + ":" + a.time.getMinutes().toString().padStart(2,'0');
                 
-                return `<tr class="${rowCls}">
-                    <td><input type="checkbox" ${a.enabled ? 'checked' : ''} onchange="alarms[${i}].enabled=this.checked; save();"></td>
+                return `<tr class="${rowCls}" onclick="openEditModal(${i}, event)">
+                    <td onclick="event.stopPropagation()"><input type="checkbox" ${a.enabled ? 'checked' : ''} onchange="alarms[${i}].enabled=this.checked; save();"></td>
                     <td><img src="${iconPath}" class="alarm-icon" onerror="this.src='${DEFAULT_ICON}'"></td>
                     <td>${a.name}</td>
                     <td style="font-weight:bold; font-size:13px;">${dateStr} ${timeStr}</td>
-                    <td class="remain-text">${diff > 0 ? h+'시간 '+m+'분' : '갱신 중...'}</td>
+                    <td class="remain-text">${diff > 0 ? h+'h '+m+'m' : 'Update...'}</td>
                     <td class="interval-text">${formatInterval(a.interval)}</td>
-                    <td><button class="btn-del" onclick="alarms.splice(${i},1); save();">-</button></td>
+                    <td onclick="event.stopPropagation()"><button class="btn-del" onclick="alarms.splice(${i},1); save();">-</button></td>
                 </tr>`;
             }).join('');
+        }
+
+        async function loadCsvFromUrl() {
+            const url = document.getElementById('csvUrl').value;
+            if (!url) return alert("URL 입력 필요");
+            try {
+                const response = await fetch(url);
+                const text = await response.text();
+                processCsvText(text);
+                alert("교체 완료");
+            } catch (e) { alert("로드 실패"); }
         }
 
         function handleCSV(input) {
             const file = input.files[0];
             if(!file) return;
             const reader = new FileReader();
-            reader.onload = function(e) {
-                processCsvText(e.target.result);
-                alert("파일 데이터로 알림 목록이 교체되었습니다.");
-            };
+            reader.onload = (e) => { processCsvText(e.target.result); alert("교체 완료"); };
             reader.readAsText(file, "UTF-8");
             input.value = '';
         }
