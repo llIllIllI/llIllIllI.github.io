@@ -11,7 +11,7 @@
 
     <style>
         :root { --primary: #2563eb; --bg: #f8fafc; --border: #e2e8f0; }
-        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); padding: 20px; max-width: 1000px; margin: auto; color: #1e293b; line-height: 1.5; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); padding: 20px; max-width: 1100px; margin: auto; color: #1e293b; line-height: 1.5; }
         .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid var(--border); }
         .flex-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
         .btn { padding: 12px 18px; border-radius: 8px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 600; font-size: 14px; transition: opacity 0.2s; white-space: nowrap; }
@@ -23,7 +23,7 @@
         
         .url-input { flex: 1; min-width: 200px; padding: 11px; border-radius: 8px; border: 1px solid var(--border); font-size: 14px; }
         .list-wrapper { width: 100%; overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); background: white; }
-        table { width: 100%; min-width: 750px; border-collapse: collapse; }
+        table { width: 100%; min-width: 900px; border-collapse: collapse; }
         th, td { padding: 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
         thead th { background: #f1f5f9; font-size: 13px; color: #64748b; font-weight: 600; }
         
@@ -31,6 +31,7 @@
         .status-red { background-color: #fee2e2 !important; color: #991b1b; }
         .status-yellow { background-color: #fef9c3 !important; color: #854d0e; }
         .remain-text { font-weight: 700; font-size: 14px; color: var(--primary); }
+        .interval-text { font-size: 13px; color: #64748b; }
         .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #1e293b; color: white; padding: 12px 24px; border-radius: 30px; display: none; z-index: 10000; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         input[type="checkbox"] { width: 24px; height: 24px; cursor: pointer; }
     </style>
@@ -70,8 +71,9 @@
                         <th style="width: 50px;">알림</th>
                         <th style="width: 70px;">아이콘</th>
                         <th>알림 이름</th>
-                        <th style="width: 100px;">기준 시간</th>
-                        <th style="width: 160px;">남은 시간</th>
+                        <th style="width: 140px;">기준 시간 (날짜)</th>
+                        <th style="width: 150px;">남은 시간</th>
+                        <th style="width: 120px;">간격</th>
                         <th style="width: 60px;">삭제</th>
                     </tr>
                 </thead>
@@ -118,18 +120,15 @@
                 const response = await fetch(url);
                 if (!response.ok) throw new Error("네트워크 응답 오류");
                 const text = await response.text();
-                processCsvText(text); // 내부에서 alarms 리스트 초기화 후 진행
+                processCsvText(text);
                 alert("기존 알림을 삭제하고 URL 데이터를 새로 불러왔습니다.");
             } catch (e) {
                 alert("데이터 로드 실패: CORS 정책 혹은 URL을 확인하세요.");
             }
         }
 
-        // CSV 텍스트 처리 (덮어쓰기 로직)
         function processCsvText(text) {
-            // 1. 기존 리스트 비우기 (덮어쓰기 핵심)
             alarms = []; 
-            
             const lines = text.split(/\r?\n/).filter(l => l.trim());
             lines.forEach(line => {
                 const p = line.split(',').map(item => item.trim());
@@ -145,8 +144,8 @@
                     });
                 }
             });
-            save(); // localStorage 갱신
-            renderUI(); // 화면 갱신
+            save();
+            renderUI();
         }
 
         function getNextTime(start, interval) {
@@ -157,7 +156,18 @@
             return target;
         }
 
-        // 알림 엔진 루프
+        function formatInterval(seconds) {
+            const s = parseInt(seconds);
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const r = s % 60;
+            let res = [];
+            if (h > 0) res.push(`${h}시간`);
+            if (m > 0) res.push(`${m}분`);
+            if (r > 0 || res.length === 0) res.push(`${r}초`);
+            return res.join(' ');
+        }
+
         setInterval(() => {
             const now = new Date();
             const ds = document.getElementById('dndStart').value, de = document.getElementById('dndEnd').value;
@@ -205,12 +215,17 @@
                 let rowCls = (diff > 0 && diff < 600000) ? "status-red" : (diff < 3600000 ? "status-yellow" : "");
                 const iconPath = (a.iconUrl && a.iconUrl !== 'null') ? a.iconUrl : DEFAULT_ICON;
                 
+                // 날짜 및 시간 포맷팅
+                const dateStr = (a.time.getMonth() + 1) + '/' + a.time.getDate();
+                const timeStr = a.time.getHours().toString().padStart(2,'0') + ":" + a.time.getMinutes().toString().padStart(2,'0');
+                
                 return `<tr class="${rowCls}">
                     <td><input type="checkbox" ${a.enabled ? 'checked' : ''} onchange="alarms[${i}].enabled=this.checked; save();"></td>
                     <td><img src="${iconPath}" class="alarm-icon" onerror="this.src='${DEFAULT_ICON}'"></td>
                     <td>${a.name}</td>
-                    <td style="font-weight:bold;">${a.time.getHours().toString().padStart(2,'0')}:${a.time.getMinutes().toString().padStart(2,'0')}</td>
-                    <td class="remain-text">${diff > 0 ? h+'시간 '+m+'분' : '계산 중...'}</td>
+                    <td style="font-weight:bold; font-size:13px;">${dateStr} ${timeStr}</td>
+                    <td class="remain-text">${diff > 0 ? h+'시간 '+m+'분' : '갱신 중...'}</td>
+                    <td class="interval-text">${formatInterval(a.interval)}</td>
                     <td><button class="btn-del" onclick="alarms.splice(${i},1); save();">-</button></td>
                 </tr>`;
             }).join('');
